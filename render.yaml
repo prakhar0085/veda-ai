@@ -3,14 +3,13 @@ services:
     name: vedaai-backend
     env: node
     plan: starter
-    # 👉 cd into the backend folder first
     buildCommand: cd backend && npm install && npm run build
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 5000
+        value: "5000"
       - key: FRONTEND_URL
         value: https://vedaai-frontend.onrender.com
       - key: MONGODB_URI
@@ -23,9 +22,8 @@ services:
     name: vedaai-frontend
     env: node
     plan: starter
-    # 👉 cd into the frontend folder first
     buildCommand: cd frontend && npm install && npm run build
-    startCommand: cd frontend && npm run start
+    startCommand: cd frontend && npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -35,6 +33,10 @@ services:
 
   - type: redis
     name: redis
+    plan: starter
+    autoDeploy: true
 
   - type: mongodb
     name: mongodb
+    plan: starter
+    autoDeploy: true
