@@ -5,14 +5,14 @@ const bullmq_1 = require("bullmq");
 const redis_1 = require("../config/redis");
 const assessment_model_1 = require("../models/assessment.model");
 const openai_service_1 = require("../services/openai.service");
-const pdf_service_1 = require("../services/pdf.service");
+const pdf_queue_1 = require("../queues/pdf.queue");
 const socket_handler_1 = require("../sockets/socket.handler");
 const QUEUE_NAME = 'assessment-generation';
 // Unified generation executor coordinates queue progress steps and websocket events
 const executeGeneration = async (assignmentId) => {
     try {
-        console.log(`🔨 [Worker] Starting assignment generation for ID: ${assignmentId}`);
-        // WebSocket Event 1: started
+        console.log(`🔨 [AI Worker] Starting AI questions synthesis for ID: ${assignmentId}`);
+        // WebSocket Event 1: started (10%)
         (0, socket_handler_1.broadcastGenerationStarted)(assignmentId);
         const assignment = await assessment_model_1.Assignment.findById(assignmentId);
         if (!assignment) {
@@ -28,40 +28,35 @@ const executeGeneration = async (assignmentId) => {
             title: assignment.title,
             subject: assignment.subject,
             difficulty: assignment.difficulty,
-            numberOfQuestions: 5 // Default number of questions
+            numberOfQuestions: assignment.numberOfQuestions || 5,
+            additionalInstructions: assignment.additionalInstructions || ''
         });
+        // Save sections and update status to completed
         assignment.sections = sections;
-        await assignment.save();
-        // WebSocket Event 2: progress (75%)
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        (0, socket_handler_1.broadcastGenerationProgress)(assignmentId, 75, 'AI synthesis successful. Designing section layouts and formatting margins...');
-        // Compile PDF
-        const pdfPath = await (0, pdf_service_1.generateAssessmentPDF)(assignment);
-        const relativePdfPath = `/pdfs/assessment-${assignment._id}.pdf`;
-        assignment.pdfPath = relativePdfPath;
         assignment.status = 'completed';
         await assignment.save();
-        // WebSocket Event 2: progress (90%)
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        (0, socket_handler_1.broadcastGenerationProgress)(assignmentId, 90, 'Finalizing print-ready PDF files and caching metadata...');
-        // WebSocket Event 3: completed
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        // WebSocket Event 2: progress (70%)
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        (0, socket_handler_1.broadcastGenerationProgress)(assignmentId, 70, 'AI synthesis successful. Delegate exam to decoupled PDF compiler queues...');
+        // DECOUPLED STAGE: Enqueue compilation job inside secondary PDF compiler queue
+        await (0, pdf_queue_1.addPDFJob)(assignment._id.toString());
+        console.log(`✅ [AI Worker] Successfully completed AI question synthesis. Delegated to PDF queue.`);
+        // Broadcast generation completed with assignment data
         (0, socket_handler_1.broadcastGenerationCompleted)(assignmentId, assignment);
-        console.log(`✅ [Worker] Successfully generated assignment: ${assignmentId}`);
     }
     catch (error) {
-        console.error(`❌ [Worker] Failed generating assignment ${assignmentId}:`, error);
+        console.error(`❌ [AI Worker] Failed generating questions for ${assignmentId}:`, error);
         try {
             await assessment_model_1.Assignment.findByIdAndUpdate(assignmentId, {
                 status: 'failed',
-                error: error.message || 'Unknown generation error'
+                error: error.message || 'AI generation failed'
             });
         }
         catch (dbErr) {
             console.error('Failed updating error status in database:', dbErr);
         }
         // WebSocket Event 4: failed
-        (0, socket_handler_1.broadcastGenerationFailed)(assignmentId, error.message || 'Unknown generation error');
+        (0, socket_handler_1.broadcastGenerationFailed)(assignmentId, error.message || 'AI generation failed');
     }
 };
 exports.executeGeneration = executeGeneration;

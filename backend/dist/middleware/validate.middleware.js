@@ -10,6 +10,7 @@ const validate = (schema) => {
         }
         catch (error) {
             if (error instanceof zod_1.ZodError) {
+                console.error('❌ [Zod Validator] Request body validation failed:', JSON.stringify(error.errors, null, 2));
                 res.status(400).json({
                     status: 'error',
                     message: 'Validation failed',

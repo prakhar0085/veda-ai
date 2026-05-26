@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.downloadPDF = exports.getAssessmentById = exports.getAssessments = exports.createAssessment = void 0;
+exports.deleteAssessment = exports.downloadPDF = exports.getAssessmentById = exports.getAssessments = exports.createAssessment = void 0;
 const assessment_model_1 = require("../models/assessment.model");
 const generator_queue_1 = require("../queues/generator.queue");
 const fs_1 = __importDefault(require("fs"));
@@ -111,4 +111,34 @@ const downloadPDF = async (req, res, next) => {
     }
 };
 exports.downloadPDF = downloadPDF;
+const deleteAssessment = async (req, res, next) => {
+    try {
+        const assessment = await assessment_model_1.Assessment.findByIdAndDelete(req.params.id);
+        if (!assessment) {
+            res.status(404).json({
+                status: 'fail',
+                message: 'Assessment not found'
+            });
+            return;
+        }
+        // Attempt to delete PDF file on disk if it exists
+        const filePath = path_1.default.join(__dirname, '..', '..', 'public', 'pdfs', `assessment-${assessment._id}.pdf`);
+        if (fs_1.default.existsSync(filePath)) {
+            try {
+                fs_1.default.unlinkSync(filePath);
+            }
+            catch (err) {
+                console.error('Failed to clean up PDF document file from disk:', err);
+            }
+        }
+        res.status(200).json({
+            status: 'success',
+            data: null
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.deleteAssessment = deleteAssessment;
 //# sourceMappingURL=assessment.controller.js.map

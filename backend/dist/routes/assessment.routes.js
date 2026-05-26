@@ -9,9 +9,10 @@ const router = (0, express_1.Router)();
 router.route('/')
     .post((0, validate_middleware_1.validate)(assessment_validator_1.createAssessmentSchema), assessment_controller_1.createAssessment)
     .get(assessment_controller_1.getAssessments);
-// Individual assessment loading
+// Individual assessment loading and deletion
 router.route('/:id')
-    .get(assessment_controller_1.getAssessmentById);
+    .get(assessment_controller_1.getAssessmentById)
+    .delete(assessment_controller_1.deleteAssessment);
 // Stream and download generated PDF document
 router.route('/:id/pdf')
     .get(assessment_controller_1.downloadPDF);

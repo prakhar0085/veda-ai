@@ -4,97 +4,287 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAssessmentPDF = void 0;
-const pdfkit_1 = __importDefault(require("pdfkit"));
+const pdf_lib_1 = require("pdf-lib");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-const generateAssessmentPDF = (assignment) => {
-    return new Promise((resolve, reject) => {
-        try {
-            // Ensure target directory exists in workspace
-            const uploadDir = path_1.default.join(__dirname, '..', '..', 'public', 'pdfs');
-            if (!fs_1.default.existsSync(uploadDir)) {
-                fs_1.default.mkdirSync(uploadDir, { recursive: true });
-            }
-            const fileName = `assessment-${assignment._id}.pdf`;
-            const filePath = path_1.default.join(uploadDir, fileName);
-            const doc = new pdfkit_1.default({
-                size: 'A4',
-                margins: { top: 50, bottom: 50, left: 50, right: 50 }
-            });
-            const writeStream = fs_1.default.createWriteStream(filePath);
-            doc.pipe(writeStream);
-            // --- HEADER SECTION ---
-            doc.rect(50, 45, 495, 80).fill('#0b0f19');
-            doc.fillColor('#ffffff');
-            doc.fontSize(22).font('Helvetica-Bold').text('VEDA AI', 70, 60);
-            doc.fontSize(10).font('Helvetica').text('Automated Assessment Creator', 70, 85);
-            doc.fillColor('#6366f1');
-            doc.fontSize(14).font('Helvetica-Bold').text('ASSIGNMENT PAPER', 380, 60, { align: 'right', width: 150 });
-            doc.fillColor('#ffffff');
-            doc.fontSize(8).font('Helvetica').text(`ID: ${assignment._id}`, 380, 80, { align: 'right', width: 150 });
-            doc.moveDown(5);
-            // --- INFO BLOCK GRID ---
-            doc.fillColor('#333333');
-            doc.fontSize(10);
-            const gridY = 145;
-            doc.font('Helvetica-Bold').text('Title: ', 50, gridY);
-            doc.font('Helvetica').text(assignment.title, 90, gridY);
-            doc.font('Helvetica-Bold').text('Subject: ', 50, gridY + 20);
-            doc.font('Helvetica').text(assignment.subject, 100, gridY + 20);
-            doc.font('Helvetica-Bold').text('Grade Level: ', 300, gridY);
-            doc.font('Helvetica').text(assignment.gradeLevel, 370, gridY);
-            doc.font('Helvetica-Bold').text('Difficulty: ', 300, gridY + 20);
-            doc.font('Helvetica').text(assignment.difficulty.toUpperCase(), 370, gridY + 20);
-            // Compute total questions & weight
-            let totalQuestions = 0;
-            let totalMarks = 0;
-            assignment.sections.forEach((sec) => {
-                totalQuestions += sec.questions.length;
-                sec.questions.forEach((q) => {
-                    totalMarks += q.marks;
-                });
-            });
-            doc.font('Helvetica-Bold').text('Questions: ', 50, gridY + 40);
-            doc.font('Helvetica').text(`${totalQuestions}`, 110, gridY + 40);
-            doc.font('Helvetica-Bold').text('Total Marks: ', 300, gridY + 40);
-            doc.font('Helvetica').text(`${totalMarks} pts`, 370, gridY + 40);
-            // Thin divider
-            doc.moveTo(50, gridY + 60).lineTo(545, gridY + 60).strokeColor('#dddddd').lineWidth(1).stroke();
-            doc.moveDown(4);
-            // --- SECTIONS & QUESTIONS ---
-            assignment.sections.forEach((section, sIdx) => {
-                doc.fontSize(12).fillColor('#0b0f19').font('Helvetica-Bold').text(section.sectionTitle);
-                doc.fontSize(9).fillColor('#6b7280').font('Helvetica-Oblique').text(`Instruction: ${section.instruction}`);
-                doc.moveDown(1);
-                let questionCounter = 1;
-                section.questions.forEach((q) => {
-                    doc.fontSize(10).fillColor('#1f2937');
-                    doc.font('Helvetica-Bold').text(`${questionCounter}. `, { continued: true });
-                    doc.font('Helvetica').text(q.question, { continued: true });
-                    doc.font('Helvetica-Oblique').fillColor('#6366f1').text(`  [${q.marks} Marks]`, { align: 'right' });
-                    doc.fillColor('#1f2937');
-                    doc.moveDown(1.5);
-                    questionCounter++;
-                });
-                // Add a line divider between sections except the last one
-                if (sIdx < assignment.sections.length - 1) {
-                    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#f3f4f6').lineWidth(1).stroke();
-                    doc.moveDown(1.5);
-                }
-            });
-            // Finalize document
-            doc.end();
-            writeStream.on('finish', () => {
-                resolve(filePath);
-            });
-            writeStream.on('error', (err) => {
-                reject(err);
-            });
+const fontkit_1 = __importDefault(require("@pdf-lib/fontkit"));
+// Custom text word-wrapping and coordinate spacer engine
+const drawWrappedText = (page, text, x, y, maxWidth, fontSize, font, color, lineHeight = 14) => {
+    const words = text.split(' ');
+    let currentLine = '';
+    let currentY = y;
+    for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
+        if (testLineWidth > maxWidth) {
+            page.drawText(currentLine, { x, y: currentY, size: fontSize, font, color });
+            currentLine = word;
+            currentY -= lineHeight;
         }
-        catch (error) {
-            reject(error);
+        else {
+            currentLine = testLine;
         }
+    }
+    if (currentLine) {
+        page.drawText(currentLine, { x, y: currentY, size: fontSize, font, color });
+        currentY -= lineHeight;
+    }
+    return currentY;
+};
+const generateAssessmentPDF = async (assignment) => {
+    // Ensure target folder exists
+    const uploadDir = path_1.default.join(__dirname, '..', '..', 'public', 'pdfs');
+    if (!fs_1.default.existsSync(uploadDir)) {
+        fs_1.default.mkdirSync(uploadDir, { recursive: true });
+    }
+    const fileName = `assessment-${assignment._id}.pdf`;
+    const filePath = path_1.default.join(uploadDir, fileName);
+    // Initialize PDF document using pdf-lib
+    const pdfDoc = await pdf_lib_1.PDFDocument.create();
+    // --------------------------------------------------------------
+    // Load a Unicode‑compatible font (NotoSans)
+    // --------------------------------------------------------------
+    const fontPath = path_1.default.resolve(__dirname, '../../fonts/NotoSans-Regular.ttf');
+    const fontBytes = fs_1.default.readFileSync(fontPath);
+    // Register FontKit so we can embed custom fonts
+    pdfDoc.registerFontkit(fontkit_1.default);
+    const customFont = await pdfDoc.embedFont(fontBytes);
+    // Use the custom font for all text operations
+    const helveticaFont = customFont;
+    const helveticaBold = customFont;
+    const helveticaOblique = customFont;
+    // Colors
+    const blackColor = (0, pdf_lib_1.rgb)(0.05, 0.05, 0.08);
+    const greyColor = (0, pdf_lib_1.rgb)(0.4, 0.4, 0.45);
+    const lightGreyColor = (0, pdf_lib_1.rgb)(0.9, 0.9, 0.9);
+    const indigoColor = (0, pdf_lib_1.rgb)(0.39, 0.4, 0.95);
+    const whiteColor = (0, pdf_lib_1.rgb)(1, 1, 1);
+    // Add initial page
+    let page = pdfDoc.addPage([595.276, 841.890]); // Standard A4 points
+    const { width, height } = page.getSize();
+    const leftMargin = 50;
+    const rightMargin = width - 50;
+    const contentWidth = rightMargin - leftMargin; // 495
+    let currentY = height - 55; // 787 Y position cursor
+    // Page tracking utility
+    const checkPageBoundary = (requiredHeight) => {
+        if (currentY - requiredHeight < 60) {
+            page = pdfDoc.addPage([595.276, 841.890]);
+            currentY = height - 55; // Reset cursor to top of new page
+        }
+    };
+    // --- 1. DARK Slate Header Block ---
+    page.drawRectangle({
+        x: leftMargin,
+        y: currentY - 80,
+        width: contentWidth,
+        height: 80,
+        color: (0, pdf_lib_1.rgb)(0.04, 0.06, 0.1)
     });
+    page.drawText('VEDA AI', {
+        x: leftMargin + 20,
+        y: currentY - 35,
+        size: 20,
+        font: helveticaBold,
+        color: whiteColor
+    });
+    page.drawText('Automated Assessment Creator', {
+        x: leftMargin + 20,
+        y: currentY - 55,
+        size: 10,
+        font: helveticaFont,
+        color: whiteColor
+    });
+    const categoryHeader = 'ASSIGNMENT PAPER';
+    const categoryWidth = helveticaBold.widthOfTextAtSize(categoryHeader, 12);
+    page.drawText(categoryHeader, {
+        x: rightMargin - 20 - categoryWidth,
+        y: currentY - 35,
+        size: 12,
+        font: helveticaBold,
+        color: indigoColor
+    });
+    const assignmentIdText = `ID: ${assignment._id}`;
+    const idWidth = helveticaFont.widthOfTextAtSize(assignmentIdText, 8);
+    page.drawText(assignmentIdText, {
+        x: rightMargin - 20 - idWidth,
+        y: currentY - 55,
+        size: 8,
+        font: helveticaFont,
+        color: whiteColor
+    });
+    currentY -= 110; // Space out beneath header block
+    // --- 2. Title & Subject ---
+    page.drawText('Title:', { x: leftMargin + 10, y: currentY, size: 10, font: helveticaBold, color: blackColor });
+    page.drawText(assignment.title, { x: leftMargin + 45, y: currentY, size: 10, font: helveticaFont, color: blackColor });
+    page.drawText('Subject:', { x: leftMargin + 10, y: currentY - 20, size: 10, font: helveticaBold, color: blackColor });
+    page.drawText(assignment.subject, { x: leftMargin + 60, y: currentY - 20, size: 10, font: helveticaFont, color: blackColor });
+    page.drawText('Grade Level:', { x: leftMargin + 260, y: currentY, size: 10, font: helveticaBold, color: blackColor });
+    page.drawText(assignment.gradeLevel, { x: leftMargin + 330, y: currentY, size: 10, font: helveticaFont, color: blackColor });
+    page.drawText('Difficulty:', { x: leftMargin + 260, y: currentY - 20, size: 10, font: helveticaBold, color: blackColor });
+    page.drawText(assignment.difficulty.toUpperCase(), { x: leftMargin + 315, y: currentY - 20, size: 10, font: helveticaFont, color: blackColor });
+    currentY -= 45;
+    // --- 3. STUDENT CREDENTIALS GRID ---
+    // Draw outer student credentials grid border
+    page.drawRectangle({
+        x: leftMargin,
+        y: currentY - 50,
+        width: contentWidth,
+        height: 50,
+        borderColor: (0, pdf_lib_1.rgb)(0.8, 0.8, 0.8),
+        borderWidth: 1
+    });
+    page.drawText('Student Name: ____________________________________', {
+        x: leftMargin + 15,
+        y: currentY - 18,
+        size: 9,
+        font: helveticaBold,
+        color: blackColor
+    });
+    page.drawText('Roll No: __________________   Section: _________', {
+        x: leftMargin + 15,
+        y: currentY - 38,
+        size: 9,
+        font: helveticaBold,
+        color: blackColor
+    });
+    // Calculate marks weight
+    let totalQuestions = 0;
+    let totalPoints = 0;
+    assignment.sections.forEach((sec) => {
+        totalQuestions += sec.questions.length;
+        sec.questions.forEach((q) => {
+            totalPoints += q.marks;
+        });
+    });
+    const estimatedTime = totalQuestions * 5;
+    page.drawText(`Marks: ${totalPoints} Pts`, { x: leftMargin + 320, y: currentY - 28, size: 9, font: helveticaBold, color: blackColor });
+    page.drawText(`Time: ${estimatedTime} Mins`, { x: leftMargin + 400, y: currentY - 28, size: 9, font: helveticaBold, color: blackColor });
+    currentY -= 80;
+    // --- 4. SECTIONS LOOP ---
+    for (const section of assignment.sections) {
+        checkPageBoundary(60); // Ensure section header fits
+        // Section header
+        page.drawText(section.sectionTitle.toUpperCase(), {
+            x: leftMargin,
+            y: currentY,
+            size: 11,
+            font: helveticaBold,
+            color: blackColor
+        });
+        // Thin underline
+        page.drawLine({
+            start: { x: leftMargin, y: currentY - 3 },
+            end: { x: rightMargin, y: currentY - 3 },
+            thickness: 1,
+            color: blackColor
+        });
+        currentY -= 20;
+        // Instructions Box
+        if (section.instruction) {
+            checkPageBoundary(40);
+            page.drawRectangle({
+                x: leftMargin,
+                y: currentY - 30,
+                width: contentWidth,
+                height: 30,
+                color: lightGreyColor
+            });
+            page.drawText('Instructions:', {
+                x: leftMargin + 10,
+                y: currentY - 12,
+                size: 8,
+                font: helveticaBold,
+                color: greyColor
+            });
+            page.drawText(section.instruction, {
+                x: leftMargin + 10,
+                y: currentY - 24,
+                size: 8,
+                font: helveticaOblique,
+                color: greyColor
+            });
+            currentY -= 45;
+        }
+        // Section questions loop
+        let questionCounter = 1;
+        for (const q of section.questions) {
+            checkPageBoundary(50); // Ensure question fits
+            const numPrefix = `${questionCounter}. `;
+            const numWidth = helveticaBold.widthOfTextAtSize(numPrefix, 10);
+            page.drawText(numPrefix, {
+                x: leftMargin,
+                y: currentY,
+                size: 10,
+                font: helveticaBold,
+                color: blackColor
+            });
+            // Wrap and write question query
+            const finalY = drawWrappedText(page, q.question, leftMargin + numWidth, currentY, contentWidth - numWidth - 85, 10, helveticaFont, blackColor);
+            // Draw marks weight right-aligned
+            const marksText = `[${q.marks} Marks]`;
+            const marksWidth = helveticaBold.widthOfTextAtSize(marksText, 9);
+            page.drawText(marksText, {
+                x: rightMargin - marksWidth,
+                y: currentY,
+                size: 9,
+                font: helveticaBold,
+                color: indigoColor
+            });
+            currentY = finalY - 15; // Set cursor to base of wrapped text
+            // Draw writing lines for non-MCQ queries
+            if (!q.question.toLowerCase().includes('options:')) {
+                checkPageBoundary(30);
+                page.drawLine({
+                    start: { x: leftMargin + 20, y: currentY },
+                    end: { x: rightMargin, y: currentY },
+                    thickness: 0.5,
+                    color: (0, pdf_lib_1.rgb)(0.8, 0.8, 0.8),
+                    dashArray: [2, 2]
+                });
+                currentY -= 15;
+                if (q.marks >= 5) {
+                    checkPageBoundary(20);
+                    page.drawLine({
+                        start: { x: leftMargin + 20, y: currentY },
+                        end: { x: rightMargin, y: currentY },
+                        thickness: 0.5,
+                        color: (0, pdf_lib_1.rgb)(0.8, 0.8, 0.8),
+                        dashArray: [2, 2]
+                    });
+                    currentY -= 15;
+                }
+            }
+            currentY -= 10;
+            questionCounter++;
+        }
+        currentY -= 15; // Space out between sections
+    }
+    // --- 5. CENTERED FOOTER PAGE STAMPING ---
+    const pages = pdfDoc.getPages();
+    pages.forEach((p, idx) => {
+        const footerText = `Page ${idx + 1} of ${pages.length}`;
+        const footerWidth = helveticaFont.widthOfTextAtSize(footerText, 8);
+        // Centered bottom page number
+        p.drawText(footerText, {
+            x: 595.276 / 2 - footerWidth / 2,
+            y: 30,
+            size: 8,
+            font: helveticaFont,
+            color: greyColor
+        });
+        // Simple top/bottom dividing lines
+        p.drawLine({
+            start: { x: leftMargin, y: 42 },
+            end: { x: rightMargin, y: 42 },
+            thickness: 0.5,
+            color: (0, pdf_lib_1.rgb)(0.9, 0.9, 0.9)
+        });
+    });
+    // Write compiled PDF bytes to fileserver disk
+    const pdfBytes = await pdfDoc.save();
+    await fs_1.default.promises.writeFile(filePath, pdfBytes);
+    return filePath;
 };
 exports.generateAssessmentPDF = generateAssessmentPDF;
 //# sourceMappingURL=pdf.service.js.map

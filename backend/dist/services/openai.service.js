@@ -7,9 +7,99 @@ exports.generateAssignmentAI = void 0;
 const openai_1 = __importDefault(require("openai"));
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
-const openai = new openai_1.default({
-    apiKey: process.env.OPENAI_API_KEY || 'MOCK_KEY'
-});
+const getAIClient = () => {
+    const groqKey = process.env.GROQ_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (groqKey && groqKey.trim() !== '' && groqKey !== 'MOCK_KEY') {
+        return {
+            client: new openai_1.default({
+                apiKey: groqKey,
+                baseURL: 'https://api.groq.com/openai/v1'
+            }),
+            model: 'llama-3.1-8b-instant',
+            name: 'Groq API',
+            isActive: true
+        };
+    }
+    if (openaiKey && openaiKey.trim() !== '' && openaiKey !== 'MOCK_KEY') {
+        return {
+            client: new openai_1.default({
+                apiKey: openaiKey
+            }),
+            model: 'gpt-4o-mini',
+            name: 'OpenAI API',
+            isActive: true
+        };
+    }
+    return {
+        client: null,
+        model: '',
+        name: 'Offline Mock',
+        isActive: false
+    };
+};
+const generateAssignmentAI = async (params) => {
+    const { title, subject, difficulty, numberOfQuestions, additionalInstructions } = params;
+    const aiInfo = getAIClient();
+    if (!aiInfo.isActive || !aiInfo.client) {
+        console.log('⚡ Using Offline Simulation Generator Mode (No active LLM API key found)');
+        return generateOfflineMock(params);
+    }
+    try {
+        console.log(`🚀 Using ${aiInfo.name} Service (Model: ${aiInfo.model}) for AI generation...`);
+        const guidelinesBlock = additionalInstructions && additionalInstructions.trim() !== ''
+            ? `\nFollow these custom instructions and question-type distribution rules exactly:\n${additionalInstructions}\n`
+            : '';
+        const prompt = `You are a high-level educational AI assessment agent.
+Create a structured assignment based on the specifications:
+Assignment Title: ${title}
+Subject: ${subject}
+Difficulty Level: ${difficulty}
+Total Questions Required: ${numberOfQuestions}
+${guidelinesBlock}
+Return a strict, valid JSON object containing an array of sections. Follow this exact JSON typescript definition:
+{
+  "title": string,
+  "subject": string,
+  "sections": Array<{
+    "sectionTitle": string (e.g. "Section A: Multiple Choice Questions"),
+    "instruction": string (e.g. "Choose the best matching option..."),
+    "questions": Array<{
+      "question": string (the question text),
+      "difficulty": "easy" | "medium" | "hard",
+      "marks": number (assign appropriate marks e.g. mcq = 2, short = 5, long = 10)
+    }>
+  }>
+}
+
+Distribute the ${numberOfQuestions} questions logically across 2 or 3 sections. Return ONLY the raw valid JSON, without extra markdown fences, padding, or text.`;
+        const response = await aiInfo.client.chat.completions.create({
+            model: aiInfo.model,
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are an educational AI assistant that strictly produces structured assessment sections in valid JSON.'
+                },
+                {
+                    role: 'user',
+                    content: prompt
+                }
+            ],
+            response_format: { type: 'json_object' }
+        });
+        const content = response.choices[0]?.message?.content || '{}';
+        const parsedData = JSON.parse(content);
+        if (parsedData && Array.isArray(parsedData.sections)) {
+            return parsedData.sections;
+        }
+        throw new Error('Parsed response does not contain sections array');
+    }
+    catch (error) {
+        console.error(`❌ ${aiInfo.name} API call failed, falling back to local simulator:`, error.message);
+        return generateOfflineMock(params);
+    }
+};
+exports.generateAssignmentAI = generateAssignmentAI;
 // Advanced local mock sections database for the offline simulation modes
 const MATHEMATICS_MOCK_SECTIONS = [
     {
@@ -146,64 +236,6 @@ const COMPUTER_SCIENCE_MOCK_SECTIONS = [
         ]
     }
 ];
-const generateAssignmentAI = async (params) => {
-    const { title, subject, difficulty, numberOfQuestions } = params;
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey || apiKey === 'MOCK_KEY') {
-        console.log('⚡ Using Offline Simulation Generator Mode (No API key found)');
-        return generateOfflineMock(params);
-    }
-    try {
-        const prompt = `You are a high-level educational AI assessment agent.
-Create a structured assignment based on the specifications:
-Assignment Title: ${title}
-Subject: ${subject}
-Difficulty Level: ${difficulty}
-Total Questions Required: ${numberOfQuestions}
-
-Return a strict, valid JSON object containing an array of sections. Follow this exact JSON typescript definition:
-{
-  "title": string,
-  "subject": string,
-  "sections": Array<{
-    "sectionTitle": string (e.g. "Section A: Multiple Choice Questions"),
-    "instruction": string (e.g. "Choose the best matching option..."),
-    "questions": Array<{
-      "question": string (the question text),
-      "difficulty": "easy" | "medium" | "hard",
-      "marks": number (assign appropriate marks e.g. mcq = 2, short = 5, long = 10)
-    }>
-  }>
-}
-
-Distribute the ${numberOfQuestions} questions logically across 2 or 3 sections. Return ONLY the raw valid JSON, without extra markdown fences, padding, or text.`;
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are an educational AI assistant that strictly produces structured assessment sections in valid JSON.'
-                },
-                {
-                    role: 'user',
-                    content: prompt
-                }
-            ],
-            response_format: { type: 'json_object' }
-        });
-        const content = response.choices[0]?.message?.content || '{}';
-        const parsedData = JSON.parse(content);
-        if (parsedData && Array.isArray(parsedData.sections)) {
-            return parsedData.sections;
-        }
-        throw new Error('Parsed response does not contain sections array');
-    }
-    catch (error) {
-        console.error('❌ OpenAI API call failed, falling back to local simulator:', error.message);
-        return generateOfflineMock(params);
-    }
-};
-exports.generateAssignmentAI = generateAssignmentAI;
 const generateOfflineMock = (params) => {
     const { subject, numberOfQuestions } = params;
     const cleanedSubject = subject.toLowerCase().replace(/[^a-z]/g, '');

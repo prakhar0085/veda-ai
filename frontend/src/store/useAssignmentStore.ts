@@ -24,6 +24,9 @@ export interface IAssignment {
   error?: string;
   sections: IAssignmentSection[];
   pdfPath?: string;
+  topics?: string[];
+  questionType?: 'mcq' | 'short' | 'long' | 'mixed';
+  additionalInstructions?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -31,8 +34,12 @@ export interface IAssignment {
 export interface ICreateAssignmentPayload {
   title: string;
   subject: string;
+  gradeLevel?: string;
+  topics?: string[];
   difficulty: 'easy' | 'medium' | 'hard';
+  questionType?: 'mcq' | 'short' | 'long' | 'mixed';
   numberOfQuestions: number;
+  additionalInstructions?: string;
 }
 
 interface AssignmentStoreState {

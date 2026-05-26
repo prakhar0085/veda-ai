@@ -17,6 +17,8 @@ const redis_1 = require("./config/redis");
 const generator_queue_1 = require("./queues/generator.queue");
 const generator_worker_1 = require("./workers/generator.worker");
 const socket_handler_1 = require("./sockets/socket.handler");
+const pdf_queue_1 = require("./queues/pdf.queue");
+const pdf_worker_1 = require("./workers/pdf.worker");
 // Middleware & Router imports
 const assessment_routes_1 = __importDefault(require("./routes/assessment.routes"));
 const assignment_routes_1 = __importDefault(require("./routes/assignment.routes"));
@@ -57,6 +59,8 @@ const startServer = async () => {
     // --- ASYNC QUEUES & WORKERS HUBS ---
     (0, generator_queue_1.initQueue)(); // Initializes BullMQ Queues
     (0, generator_worker_1.initWorker)(); // Initializes BullMQ Workers
+    (0, pdf_queue_1.initPDFQueue)(); // Initializes BullMQ PDF Queues
+    (0, pdf_worker_1.initPDFWorker)(); // Initializes BullMQ PDF Workers
     // --- WEBSOCKET ENGINE ---
     (0, socket_handler_1.initSockets)(server, FRONTEND_URL);
     // --- ROUTE ATTACHMENT ---

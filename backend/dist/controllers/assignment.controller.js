@@ -10,12 +10,16 @@ const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const createAssignment = async (req, res, next) => {
     try {
-        const { title, subject, difficulty, numberOfQuestions } = req.body;
+        const { title, subject, gradeLevel, topics, difficulty, questionType, numberOfQuestions, additionalInstructions } = req.body;
         const assignment = new assessment_model_1.Assignment({
             title,
             subject,
-            gradeLevel: 'High School', // Default category
+            gradeLevel: gradeLevel || 'High School',
+            topics: topics || [subject || 'General'],
             difficulty,
+            questionType: questionType || 'mixed',
+            numberOfQuestions: numberOfQuestions || 5,
+            additionalInstructions: additionalInstructions || '',
             status: 'pending',
             sections: []
         });

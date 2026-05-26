@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
+import fontkit from '@pdf-lib/fontkit';
 import { IAssignment } from '../models/assessment.model';
 
 // Custom text word-wrapping and coordinate spacer engine
@@ -53,11 +54,18 @@ export const generateAssessmentPDF = async (assignment: IAssignment): Promise<st
   // Initialize PDF document using pdf-lib
   const pdfDoc = await PDFDocument.create();
   
-  // Embed Helvetica fonts
-  const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const helveticaOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
-
+  // --------------------------------------------------------------
+  // Load a Unicode‑compatible font (NotoSans)
+  // --------------------------------------------------------------
+  const fontPath = path.resolve(__dirname, '../../fonts/NotoSans-Regular.ttf');
+  const fontBytes = fs.readFileSync(fontPath);
+  // Register FontKit so we can embed custom fonts
+  pdfDoc.registerFontkit(fontkit);
+  const customFont = await pdfDoc.embedFont(fontBytes);
+  // Use the custom font for all text operations
+  const helveticaFont = customFont;
+  const helveticaBold = customFont;
+  const helveticaOblique = customFont;
   // Colors
   const blackColor = rgb(0.05, 0.05, 0.08);
   const greyColor = rgb(0.4, 0.4, 0.45);

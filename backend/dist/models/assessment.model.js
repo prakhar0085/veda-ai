@@ -24,7 +24,11 @@ const AssignmentSchema = new mongoose_1.Schema({
     },
     error: { type: String },
     sections: { type: [AssignmentSectionSchema], default: [] },
-    pdfPath: { type: String }
+    pdfPath: { type: String },
+    topics: { type: [String], default: [] },
+    questionType: { type: String, enum: ['mcq', 'short', 'long', 'mixed'], default: 'mixed' },
+    numberOfQuestions: { type: Number, default: 5 },
+    additionalInstructions: { type: String, default: '' }
 }, { timestamps: true });
 exports.Assignment = (0, mongoose_1.model)('Assignment', AssignmentSchema);
 // Export alias to maintain compatibility with existing assessments files

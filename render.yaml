@@ -1,0 +1,42 @@
+# Render Blueprint configuration for VedaAI
+# Learn more at: https://render.com/docs/blueprints
+
+services:
+  # 1. Express Backend Web Service
+  - type: web
+    name: veda-ai-backend
+    env: node
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      # These placeholders must be defined or overridden in the Render Dashboard
+      - key: MONGO_URI
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: FRONTEND_URL
+        value: https://veda-ai.onrender.com
+
+  # 2. Next.js Frontend Web Service
+  - type: web
+    name: veda-ai
+    env: node
+    plan: free
+    branch: main
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://veda-ai-backend.onrender.com/api
+      - key: NEXT_PUBLIC_SOCKET_URL
+        value: https://veda-ai-backend.onrender.com
