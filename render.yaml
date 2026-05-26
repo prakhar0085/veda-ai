@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: vedaai-backend
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: FRONTEND_URL
+        value: https://vedaai-frontend.onrender.com
+      - key: MONGODB_URI
+        fromService: mongodb
+      - key: REDIS_URL
+        fromService: redis
+    autoDeploy: true
+  - type: web
+    name: vedaai-frontend
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://vedaai-backend.onrender.com
+    autoDeploy: true
+  - type: redis
+    name: redis
+  - type: mongodb
+    name: mongodb
